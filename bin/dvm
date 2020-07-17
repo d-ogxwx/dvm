@@ -1,0 +1,585 @@
+#!/usr/bin/env bash
+#
+# BSD 3-Clause License
+#
+# Copyright (c) 2020, Daiki Ogawa
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+DVM_DIR="$HOME/.dvm"
+DVM_VERSIONS_DIR="$DVM_DIR/versions"
+DVM_NOW_DIR="$DVM_DIR/now"
+
+function find_cached_versions() {
+	find "$DVM_VERSIONS_DIR" -type d -mindepth 2 | sed 's/\// /g' | awk '{print $(NF-1)}' | awk '!a[$0]++'
+}
+
+DVM_CACHED_VERSIONS=
+DVM_ARRAY_CACHED_VERSIONS=
+DVM_CACHED_VERSIONS_SIZE=
+
+DOTTY_VERSIONS=$(cat<<-EOF
+0.25.0-RC2
+0.25.0-RC1
+0.24.0
+0.24.0-RC1
+0.23.0-RC1
+0.22.0
+0.22.0-RC1
+0.21.0-RC1
+0.20.0
+0.20.0-RC1
+0.19.0
+0.19.0-RC1
+0.18.1
+0.18.1-RC1
+0.17.0
+0.17.0-RC1
+0.16.0
+0.16.0-RC3
+0.16.0-RC2
+0.16.0-RC1
+0.15.0
+0.15.0-RC1
+0.14.0
+0.14.0-RC1
+0.13.0
+0.13.0-RC1
+0.12.0
+0.12.0-RC1
+0.11.0
+0.11.0-RC1
+0.10.0
+0.10.0-RC1
+0.9.0
+0.9.0-RC1
+0.8.0
+0.8.0-RC1
+0.7.0
+0.7.0-RC1
+0.6.0
+0.6.0-RC1
+0.5.0-RC1
+0.4.0-RC1
+0.3.0-RC2
+0.3.0-RC1
+0.2.0-RC1
+0.1.2-RC1
+EOF
+)
+
+function usage () {
+	cat <<- EOF
+
+Usage: dvm [options] [COMMAND]
+
+Commands:
+
+dvm install <version>                           Install a specific dotty version. 
+dvm install [-i|-interactive]                   Install a specific dotty version(interactive mode). 
+dvm now-version                                 Show an currently version on dvm.
+dvm now-version [-a|all]                        Show an currently version and all cached versions on dvm.
+dvm checkout <version>                          Switch to a specific version cached on dvm.
+dvm checkout [-i|-interactive]                  Switch to a specific version cached on dvm(interactive mode).
+dvm rm <version>                                Remove a specific dotty version.
+
+
+EOF
+}
+
+function is_version () {
+	[[ "$1" =~ ^(0|1)\.([0-9]+)\.([0-9]+)(-RC1|-RC2|-RC3)?$ ]]
+}
+
+function is_v_prefix_version () {
+	[[ "$1" =~ ^[v](0|1)\.([0-9]+)\.([0-9]+)(-RC1|-RC2|-RC3)?$ ]]
+}
+
+function get_now_version() {
+	head -n 1 "$DVM_NOW_DIR/.version"
+}
+
+function get_cached_versions() {
+	find "$DVM_VERSIONS_DIR" -type d -mindepth 2 | sed 's/\// /g' | awk '{print $(NF-1)}' | awk '!a[$0]++'
+}
+
+function print_format1() {
+	printf "  $1 \n"
+}
+
+function print_version_format () {
+	printf "  $1 $2 \n"
+}
+
+function error() {
+	print_format1 "error: $1"
+	exit 1
+}
+
+function success() {
+	print_format1 "success: $1"
+}
+
+function print_selected_version () {
+	print_version_format ">" $1
+}
+
+function print_non_selected_version () {
+	print_version_format " " $1
+}
+
+function set_screen() {
+	tput smcup 2> /dev/null
+	tput civis 2> /dev/null
+	stty -echo
+}
+
+function reset_screen() {
+	tput cnorm 2> /dev/null
+	tput rmcup 2> /dev/null
+	stty echo
+} 
+
+function dir_exists() {
+	[[ -d "$1" ]]
+}
+
+function file_exists() {
+	[[ -e "$1" ]]
+}
+
+function argument_exists () {
+	[[ -n "$1" ]]
+}
+
+function is_interactive_argument() {
+	[[ "-i" = "$1" ]] || [[ "-interactive" = "$1" ]]
+}
+
+function is_all_argument() {
+	[[ "$1" = "-a" ]] || [[ "$1" = "-all" ]]
+}
+
+function dvm_versions_dir_exists () {
+	! find -d "$DVM_VERSIONS_DIR" &> /dev/null
+}
+
+function command_exists() {
+	command -v "$1" &> /dev/null
+}
+
+function print_selected_version_with_cached_versions () {
+	for version in ${DVM_CACHED_VERSIONS}; do
+		if [ "$version" = "$1" ]; then
+			print_selected_version "$version"
+		else
+			print_non_selected_version "$version"
+		fi
+	done
+}
+
+function print_dotty_versions () {
+	for version in ${DOTTY_VERSIONS}; do
+		echo "$version"
+	done
+}
+
+# -- print prev dotty version after matching a specific version
+function prev_dotty_version() {
+	print_dotty_versions | grep "$1" -B 1 | head -n 1
+}
+
+# -- print next dotty version after matching a specific version
+function next_dotty_version() {
+	print_dotty_versions | grep "$1" -A 1 | tail -n 1
+}
+
+function print_cached_versions () {
+	for version in $(find_cached_versions); do
+		echo "$version"
+	done
+}
+
+# -- print prev cached version after matching a specific version
+function prev_cached_version() {
+	print_cached_versions | grep "$1" -B 1 | head -n 1
+}
+
+# -- print next cached version after matching a specific version
+function next_cached_version() {
+	print_cached_versions | grep "$1" -A 1 | tail -n 1
+}
+
+#-- print menu
+function print_cached_versions_with_selected_version () {
+	for version in ${DVM_CACHED_VERSIONS}; do
+		if [[ "$version" = "$1" ]]; then
+			print_selected_version "$version"
+		else
+			print_non_selected_version "$version"
+		fi
+	done
+}
+
+#-- print menu
+function print_dotty_versions_with_selected_version () {
+	for version in ${DOTTY_VERSIONS}; do
+		if [[ "$version" = "$1" ]]; then
+			print_selected_version "$version"
+		else
+			print_non_selected_version "$version"
+		fi
+	done
+}
+
+function dvm_setup () {
+	mkdir -p "$DVM_VERSIONS_DIR"
+	mkdir -p "$DVM_NOW_DIR"
+	echo "" > "$DVM_NOW_DIR/.version"
+	success "set up .dvm\n"
+}
+
+function download_rollback() {
+	dotty_tar_path="$1"
+	printf "\nCanceled\n"
+	file_exists "$dotty_tar_path" && rm $dotty_tar_path	
+	exit 1
+}
+
+function download() {
+
+	version="$1"
+
+	url="https://github.com/lampepfl/dotty/releases/download/$version/dotty-$version.tar.gz"
+
+	! command_exists "curl" && error "curl command required. Please install curl command\n"
+
+	curl --output /dev/null --silent --head --fail $url
+	status=$?
+
+	[[ ! $status -eq 0 ]] && error "not found $url\n"
+
+	to="$DVM_VERSIONS_DIR/v$version"
+
+	print_format1 "From: $url"
+	print_format1 "To: $to\n"
+
+	dotty_tar_path="$DVM_VERSIONS_DIR/dotty-$version.tar.gz" 
+
+	# -- trap
+	trap "download_rollback $dotty_tar_path" INT
+
+	curl -L -# -o "$dotty_tar_path" "$url" 
+	
+	tar -xzf "$dotty_tar_path" -C "$DVM_VERSIONS_DIR"
+
+	from=$(find "$DVM_VERSIONS_DIR" -type d -name "dotty-$version*")
+
+	#-- Rename 
+	#-- example: dotty-0.0.1 -> v0.0.1
+	mv "$from" "$to"
+	rm "$dotty_tar_path"
+
+	success "download $version\n"
+}
+
+#-- print menu of using at interactive install
+function print_interactive_install_menu () {
+	printf "\n"
+	print_dotty_versions_with_selected_version "$1"
+	printf "\n"
+	print_format1 "k) Up, j) Down, Enter) Select, q) Quit"
+}
+
+function interactive_install () {
+
+	set_screen
+	clear
+
+	selected_version=
+
+	if file_exists "$DVM_NOW_DIR/.version"; then
+		selected_version="$(echo "$(get_now_version)" | sed 's/v//g')"
+		[[ -z "$selected_version" ]] && selected_version="$(print_dotty_versions | head -n 1)" 
+	else
+		selected_version="$(print_dotty_versions | head -n 1)" 
+	fi
+
+	print_interactive_install_menu "$selected_version"
+
+	while true; do
+		read -s -n 1 key
+		case "$key" in
+			"")
+				clear
+				#-- reset
+				reset_screen
+				install "$selected_version"
+				#-- example: Now version: 0.17.0
+				success "switch to the version $(get_now_version)"
+				echo
+				exit 0;;
+			k) 
+				#-- Up
+				clear
+				selected_version=$(prev_dotty_version "$selected_version")
+				print_interactive_install_menu "$selected_version"
+				;;
+			j)
+				#-- Down
+				clear
+				selected_version=$(next_dotty_version "$selected_version")
+				print_interactive_install_menu "$selected_version"
+				;;
+			q)
+				#--Reset Screen
+				reset_screen
+				exit 1;
+				;;
+			*)
+				;;
+		esac
+	done	
+}
+
+function install () {
+
+	version=
+
+	! argument_exists "$1" && error "not found version argument.\n"
+
+	if is_interactive_argument "$1"; then
+		interactive_install
+	else
+		! is_version "$1" && error "incorrect version argument. Example 0.17.0\n"
+
+		#-- $1 is not v prefix version.
+		version="$1"
+
+		#-- If .dvm directory does not exist, setup .dvm directory.
+		! dir_exists "$DVM_VERSIONS_DIR" && dvm_setup
+
+		#-- Add v prefix
+		dir_exists "$DVM_VERSIONS_DIR/v$version" && error "this version has already cached on dvm\n"
+
+		download "$1"
+
+		print_format1 "Do you configure your dvm to use this version ($version): [y/n]\n"
+		read -s -n 1 input
+		
+		if [ "$input" = "y" ]; then
+			# Must pass the added v prefix version.
+			checkout "v$version"
+			now_version=$(get_now_version)
+			success "switch to the version $now_version\n"
+		fi
+		exit 0;
+	fi
+}
+
+#-- print menu of using at interactive checkout
+function print_interactive_checkout_menu () {
+	printf "\n"
+	print_cached_versions_with_selected_version "$1"
+	printf "\n"
+	print_format1 "k) Up, j) Down, Enter) Select, q) Quit"
+}
+
+function interactive_checkout () {
+
+	dvm_versions_dir_exists && error "not found .dvm versions directory.\n" 
+
+	# Init DVM_CACHED_VERSIONS
+	DVM_CACHED_VERSIONS=$(find_cached_versions)
+
+	selected_version=
+
+	if file_exists "$DVM_NOW_DIR/.version"; then
+		selected_version="$(get_now_version)"
+		[[ -z "$selected_version" ]] && selected_version="$(print_cached_versions | head -n 1)" 
+	else
+		selected_version="$(print_cached_versions | head -n 1)" 
+	fi
+
+	set_screen
+	clear
+
+	print_interactive_checkout_menu "$selected_version"
+
+	while true; do
+		read -s -n 1 key
+		case "$key" in
+			"")
+				clear
+				#--reset
+				reset_screen
+				checkout "$selected_version"
+				#-- example: Now version: 0.17.0
+				success "switch to the version $(get_now_version)"
+				echo
+				exit 0;;
+			k) 
+				#-- Up
+				clear
+				selected_version=$(prev_cached_version "$selected_version")
+				print_interactive_checkout_menu "$selected_version"
+				;;
+			j)
+				#-- Down
+				clear
+				selected_version=$(next_cached_version "$selected_version")
+				print_interactive_checkout_menu "$selected_version"
+				;;
+			q)
+				#--Reset Screen
+				reset_screen
+				exit 1;
+				;;
+			*)
+				;;
+		esac
+	done	
+}
+
+function checkout () {
+
+	! argument_exists "$1" && error "not found argument.\n"
+
+	! dir_exists "$DVM_DIR" && error "not found .dvm directory.\n"
+
+	! dir_exists "$DVM_VERSIONS_DIR" && error "not found some cached versions.\n"
+
+	if is_interactive_argument "$1"; then 
+		interactive_checkout
+    else 	
+		! is_v_prefix_version "$1" && error "incorrect version argument.\n"
+		! dir_exists "$DVM_VERSIONS_DIR/$1" && error "not match version which is cached on dvm.\n"
+		# -- checkout logic
+		version="$1"
+		dir_exists "$DVM_NOW_DIR/dotty" && rm -r "$DVM_NOW_DIR/dotty"
+		ln -fs "$DVM_VERSIONS_DIR/$version" "$DVM_NOW_DIR/dotty"
+		echo "$version" > "$DVM_NOW_DIR/.version"
+		success "switch to the version $(get_now_version)\n"
+		exit 0;
+	fi
+}
+
+function remove_cached_version() {
+
+	! argument_exists "$1" && error "not exist version argument.\n"
+
+	! is_v_prefix_version "$1" && error "incorrect version argument.\n"
+
+	! dir_exists "$DVM_VERSIONS_DIR/$1" && error "this version is not cached on dvm.\n"
+
+	[[ "$(get_now_version)" = "$1" ]] && error "this version has set on dvm.\n"
+
+	while :
+	do
+		print_format1 "Delete this version ($1): [y/n]"
+		printf "\n"
+		read -s -n 1 input 
+		case $input in
+			y) 
+				rm -r "$DVM_VERSIONS_DIR/$version";
+				success "deleted dotty $version version.\n";
+				exit 0 ;;
+			n) 
+				print_format1 "this operation is canceled.\n"
+				exit 0 ;;
+			*) 
+				print_format1 "this operation is canceled.\n"
+				exit 0;;
+		esac
+	done
+}
+
+function print_now_version() {
+	success "now version $(get_now_version)\n"; 
+}
+
+function print_now_version_with_all_cached_versions() {
+	print_format1 "now version and some cached versions: " 
+	now_version=$(get_now_version)
+	DVM_CACHED_VERSIONS=$(get_cached_versions)
+	printf "\n"
+	print_selected_version_with_cached_versions "$now_version"
+	printf "\n"	
+	print_format1 "(>): this symbol represents a version which is set on dvm now.\n"
+}
+
+function now_version () {
+
+	! dir_exists "$DVM_DIR" && error "not found .dvm directory.\n"
+
+	! dir_exists "$DVM_VERSIONS_DIR" && error "not found some cached versions.\n"
+
+	! file_exists "$DVM_NOW_DIR/.version" && error "not found now version.\n"
+
+	if argument_exists "$1" && is_all_argument "$1"; then
+		print_now_version_with_all_cached_versions
+		exit 0;
+	else
+		print_now_version
+		exit 0;
+	fi
+}
+
+#-- main
+if [ $# -eq 0 ]; then
+	usage
+	exit 1;
+else
+	echo	
+	while [ $# -ne 0 ]; do
+		case "$1" in
+			help) 
+				usage; 
+				exit;;
+			i|install) 
+				shift;
+				install "$1"
+				exit;;
+			rm) 
+				shift;
+				remove_cached_version "$1"; 
+				;;
+			checkout) 
+				shift;
+				checkout "$1"
+				;;
+			now-version) 
+				shift; 
+				now_version "$1"
+				;;
+			*) 
+				error "command not found.\n"; 
+				;;
+		esac
+	done
+fi
+

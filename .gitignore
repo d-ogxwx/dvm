@@ -1,0 +1,14 @@
+/node_modules
+
+# log
+*.log
+
+# cache
+.npm
+
+# env
+.env
+
+# swp,swo
+*.swp
+*.swo

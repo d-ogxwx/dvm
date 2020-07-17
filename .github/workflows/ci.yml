@@ -1,0 +1,38 @@
+name: CI
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '12'
+    - name: Install bats
+      run: |
+        curl -L -# -o "v0.4.0.tar.gz" https://github.com/sstephenson/bats/archive/v0.4.0.tar.gz
+        tar -xzf v0.4.0.tar.gz
+    - name: Link dvm
+      run: |
+        npm link
+    - name: Check Error
+      run: | 
+        ./bats-0.4.0/bin/bats ./test/error/install.bats
+        ./bats-0.4.0/bin/bats ./test/error/now-version.bats
+        ./bats-0.4.0/bin/bats ./test/error/command_not_found.bats
+    - name: dvm install 0.17.0
+      run: |
+        dvm install 0.17.0
+    - name: dvm checkout v0.17.0
+      run: |
+        dvm checkout v0.17.0
+    - name: Check Success 
+      run: |
+        ./bats-0.4.0/bin/bats ./test/success/now-version.bats
+        ./bats-0.4.0/bin/bats ./test/success/help.bats
+    - name: Show dvm usage
+      run: dvm help
