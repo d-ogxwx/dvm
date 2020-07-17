@@ -13,12 +13,13 @@ Add the following code to your shell configuration files such as `.bashrc` or `.
 ```bash
 $ export PATH=$PATH:$HOME/.dvm/now/dotty/bin
 ```
+
 ## Installation 
 
 You have already installed npm, you can install via npm.
 
 ```bash
-$ npm install -g @d-ogxwx/dvm
+$ npm install -g d-ogxwx/dvm
 ```
 
 ## Usage
@@ -37,6 +38,7 @@ dvm checkout [-i|-interactive]                  Switch to a specific version cac
 dvm rm <version>                                Remove a specific dotty version.
 
 ```
+
 
 
 
