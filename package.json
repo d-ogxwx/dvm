@@ -11,6 +11,7 @@
 		"url": "https://github.com/d-ogxwx/dvm"
 	},
 	"homepage": "https://github.com/d-ogxwx/dvm",
+	"publishConfig": { "registry": "https://npm.pkg.github.com/" },
 	"bugs": "https://github.com/d-ogxwx/dvm/issues",
 	"contributors": [],
 	"keywords": [
