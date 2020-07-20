@@ -8,6 +8,13 @@ jobs:
     - uses: actions/setup-node@v1
       with:
         node-version: '12'
+    - name: Install shellcheck
+      run: |
+        chmod +x ./setup/github/ci/install_shellcheck.sh
+        ./setup/github/ci/install_shellcheck.sh
+    - name: Check syntax error
+      run: |
+        shellcheck ./bin/dvm
     - name: Install bats
       run: |
         curl -L -# -o "v0.4.0.tar.gz" https://github.com/sstephenson/bats/archive/v0.4.0.tar.gz
