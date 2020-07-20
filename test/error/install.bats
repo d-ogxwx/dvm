@@ -1,4 +1,4 @@
-#!/usr/bin/evn bats
+#!/usr/bin/env bats
 
 @test "dvm install" {
   run dvm install
