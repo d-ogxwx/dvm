@@ -489,24 +489,25 @@ function checkout () {
 }
 
 function remove_cached_version() {
+	local version="$1"
 
-	! argument_exists "$1" && error "not exist version argument.\n"
+	! argument_exists "$version" && error "not exist version argument.\n"
 
-	! is_v_prefix_version "$1" && error "incorrect version argument.\n"
-
-	! dir_exists "$DVM_VERSIONS_DIR/$1" && error "this version is not cached on dvm.\n"
-
-	[[ "$(get_now_version)" = "$1" ]] && error "this version has set on dvm.\n"
+	! is_v_prefix_version "$version" && error "incorrect version argument.\n"
 
 	while :
 	do
-		print_format1 "Delete this version ($1): [y/n]"
+		print_format1 "Delete this version ($version): [y/n]"
 		printf "\n"
 		read -s -n 1 input 
 		case $input in
 			y) 
-				rm -r "$DVM_VERSIONS_DIR/$version";
-				success "deleted dotty $version version.\n";
+				! dir_exists "$DVM_VERSIONS_DIR/$version" && error "this version is not cached on dvm.\n"
+
+				[[ "$(get_now_version)" = "$1" ]] && error "this version is now version on dvm.\n"
+
+				rm -rf "$DVM_VERSIONS_DIR/${version:?}"
+				success "deleted dotty $version version.\n"
 				exit 0 ;;
 			n) 
 				print_format1 "this operation is canceled.\n"
