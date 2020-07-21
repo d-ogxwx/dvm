@@ -22,6 +22,12 @@ You have already installed npm, you can install via npm.
 $ npm install -g d-ogxwx/dvm
 ```
 
+If you already have curl command, you can install via curl. 
+
+```bash
+curl -fL https://git.io/dotty-version-manager -o dvm && chmod +x dvm
+```
+
 ## Usage
 
 ```bash
