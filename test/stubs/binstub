@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+set -e
+
+status=0
+program="${0##*/}"
+PROGRAM="$(echo "$program" | tr a-z- A-Z_)"
+
+_STUB_PLAN="${PROGRAM}_STUB_PLAN"
+_STUB_RUN="${PROGRAM}_STUB_RUN"
+_STUB_INDEX="${PROGRAM}_STUB_INDEX"
+_STUB_RESULT="${PROGRAM}_STUB_RESULT"
+_STUB_END="${PROGRAM}_STUB_END"
+_STUB_DEBUG="${PROGRAM}_STUB_DEBUG"
+
+if [ -n "${!_STUB_DEBUG}" ]; then
+  echo "$program" "$@" >&${!_STUB_DEBUG}
+fi
+
+[ -e "${!_STUB_PLAN}" ] || exit 1
+[ -n "${!_STUB_RUN}" ] || eval "${_STUB_RUN}"="${BATS_MOCK_TMPDIR}/${program}-stub-run"
+
+eval "${_STUB_INDEX}"=1
+eval "${_STUB_RESULT}"=0
+[ ! -e "${!_STUB_RUN}" ] || source "${!_STUB_RUN}"
+
+index=0
+while IFS= read -r line; do
+  index=$(($index + 1))
+
+  if [ -z "${!_STUB_END}" ] && [ $index -eq "${!_STUB_INDEX}" ]; then
+
+    result=0
+
+    command=" $line"
+    if [ "$command" != "${command/ : /}" ]; then
+      patterns="${command%% : *}"
+      command="${command#* : }"
+    fi
+
+    set -f
+    patterns=($patterns)
+    set +f
+    arguments=("$@")
+
+    for ((i = 0; i < ${#patterns[@]}; i++)); do
+      pattern="${patterns[$i]}"
+      argument="${arguments[$i]}"
+
+      case "$argument" in
+      $pattern) ;;
+      *) result=1 ;;
+      esac
+    done
+
+    if [ $result -eq 0 ]; then
+      set +e
+      (eval "$command")
+      status="$?"
+      set -e
+    else
+      eval "${_STUB_RESULT}"=1
+    fi
+  fi
+done <"${!_STUB_PLAN}"
+
+if [ -n "${!_STUB_END}" ]; then
+
+  rm -f "${!_STUB_RUN}"
+
+  if [ $index -ge "${!_STUB_INDEX}" ]; then
+    eval "${_STUB_RESULT}"=1
+  fi
+
+  exit "${!_STUB_RESULT}"
+
+else
+  if [ "${!_STUB_INDEX}" -gt $index ]; then
+    eval "${_STUB_RESULT}"=1
+  fi
+
+  {
+    echo "${_STUB_INDEX}=$((${!_STUB_INDEX} + 1))"
+    echo "${_STUB_RESULT}=${!_STUB_RESULT}"
+  } >"${!_STUB_RUN}"
+
+  exit "$status"
+
+fi
